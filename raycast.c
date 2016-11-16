@@ -175,7 +175,7 @@ int main(int argc, char *argv[]) {
       };
       normalize(Rd);
       
-      raycast(color, Ro, Rd, 1);
+      raycast(color, Ro, Rd, 7);
 
       // Note: Going through y in reverse, so adjust index accordingly
       int p = (M - y)*N + x; // Index of buffer
@@ -204,9 +204,9 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-void raycast(double* color, double* Ro, double* Rd, int maxdepth) {
+void raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
   double best_t = INFINITY;
-  int best_i = 0;
+  int best_i = -1;
   // Check intersections
   for (int i=0; g_objects[i] != NULL; i += 1) {
     double t = 0;
@@ -235,14 +235,58 @@ void raycast(double* color, double* Ro, double* Rd, int maxdepth) {
     }
   }
   
+  double reflcolor[3] = {0, 0, 0};
+  double refrcolor[3] = {0, 0, 0};
+  double objcolor[3] = {0, 0, 0};
+
+  double refl = 0;
+  double refr = 0;
+  
   if (best_t > 0 && best_t != INFINITY) {
+    
+    double Ron[3] = {0, 0, 0};
+    Ron[0] = best_t * Rd[0] + Ro[0];
+    Ron[1] = best_t * Rd[1] + Ro[1];
+    Ron[2] = best_t * Rd[2] + Ro[2];
+    
+    double N[3];
+    switch (g_objects[best_i]->kind) {
+      case 1: // sphere
+        N[0] = Ron[0] - g_objects[best_i]->position[0];
+        N[1] = Ron[1] - g_objects[best_i]->position[1];
+        N[2] = Ron[2] - g_objects[best_i]->position[2];
+        break;
+      case 2: // plane
+        N[0] = g_objects[best_i]->plane.normal[0];
+        N[1] = g_objects[best_i]->plane.normal[1];
+        N[2] = g_objects[best_i]->plane.normal[2];
+        break;
+      default:
+        fprintf(stderr, "Error: Programmer forgot to implement object normal %d.\n", line);
+        exit(1);
+        break;
+    }
+    
+    refl = g_objects[best_i]->reflectivity;
+    refr = g_objects[best_i]->refractivity;
+    
+    double NdotRd = v3_dot(N, Rd);
+    
+    double Rdl[3]; // Reflection of L
+    Rdl[0] = Rd[0] + 2*(NdotRd*N[0] - Rd[0]);
+    Rdl[1] = Rd[1] + 2*(NdotRd*N[1] - Rd[1]);
+    Rdl[2] = Rd[2] + 2*(NdotRd*N[2] - Rd[2]);
+    normalize(Rdl);
+    
+    if (refl != 0) {
+      printf("Got here!");
+    }
+    
     for (int j=0; g_lights[j] != NULL; j++) {
     // Shadow test
-      double Ron[3] = {0, 0, 0};
+
       double Rdn[3] = {0, 0, 0};
-      Ron[0] = best_t * Rd[0] + Ro[0];
-      Ron[1] = best_t * Rd[1] + Ro[1];
-      Ron[2] = best_t * Rd[2] + Ro[2];
+
       Rdn[0] = g_lights[j]->position[0] - Ron[0];
       Rdn[1] = g_lights[j]->position[1] - Ron[1];
       Rdn[2] = g_lights[j]->position[2] - Ron[2];
@@ -281,24 +325,6 @@ void raycast(double* color, double* Ro, double* Rd, int maxdepth) {
       
       if (closest_i == -1) {
        // N, L, R, V
-       
-        double N[3];
-        switch (g_objects[best_i]->kind) {
-          case 1: // sphere
-            N[0] = Ron[0] - g_objects[best_i]->position[0];
-            N[1] = Ron[1] - g_objects[best_i]->position[1];
-            N[2] = Ron[2] - g_objects[best_i]->position[2];
-            break;
-          case 2: // plane
-            N[0] = g_objects[best_i]->plane.normal[0];
-            N[1] = g_objects[best_i]->plane.normal[1];
-            N[2] = g_objects[best_i]->plane.normal[2];
-            break;
-          default:
-            fprintf(stderr, "Error: Programmer forgot to implement object normal %d.\n", line);
-            exit(1);
-            break;
-        }
         
         
         normalize(N);
@@ -360,11 +386,15 @@ void raycast(double* color, double* Ro, double* Rd, int maxdepth) {
         double* sc = g_objects[best_i]->specular_color;
         double* lc = g_lights[j]->color;
         
-        color[0] += frad * fang * lc[0]*(diffuse*dc[0] + specular*sc[0]);
-        color[1] += frad * fang * lc[1]*(diffuse*dc[1] + specular*sc[1]);
-        color[2] += frad * fang * lc[2]*(diffuse*dc[2] + specular*sc[2]);
+        objcolor[0] += frad * fang * lc[0]*(diffuse*dc[0] + specular*sc[0]);
+        objcolor[1] += frad * fang * lc[1]*(diffuse*dc[1] + specular*sc[1]);
+        objcolor[2] += frad * fang * lc[2]*(diffuse*dc[2] + specular*sc[2]);
       }
     }
+    
+    outcolor[0] += (1 - refl - refr)*objcolor[0] + refl*reflcolor[0] + refr*refrcolor[0];
+    outcolor[1] += (1 - refl - refr)*objcolor[1] + refl*reflcolor[1] + refr*refrcolor[1];
+    outcolor[2] += (1 - refl - refr)*objcolor[2] + refl*reflcolor[2] + refr*refrcolor[2];
     
   }
 }
@@ -578,6 +608,10 @@ Object** read_scene(char* filename) {
       objects[objcnt]->specular_color[0] = 1;
       objects[objcnt]->specular_color[1] = 1;
       objects[objcnt]->specular_color[2] = 1;
+      
+      objects[objcnt]->reflectivity = 0;
+      objects[objcnt]->reflectivity = 0;
+      objects[objcnt]->ior = 1;
 
       skip_ws(json);
 
