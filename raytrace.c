@@ -204,6 +204,8 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
+// Recursive raycasting function
+// outcolor is an output parameter
 int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
   if (maxdepth == 0) {
     return 1;
