@@ -6,8 +6,6 @@
 
 #define PI 3.14159265
 
-int line = 1;
-
 // Holds an rgb triple of a pixel
 typedef struct Pixel {
   unsigned char red, green, blue;
@@ -48,6 +46,12 @@ typedef struct {
   };
 } Object;
 
+Object** g_cameras;
+Object** g_objects;
+Object** g_lights;
+int line = 1;
+
+void raycast(double*, double*, double*, int); 
 double sphere_intersection(double*, double*, double*, double);
 double plane_intersection(double*, double*, double*, double*);
 void writeP3(Pixel *, Header, FILE *);
@@ -103,9 +107,9 @@ int main(int argc, char *argv[]) {
   // Read the scene file
 
   
-  Object** cameras = malloc(sizeof(Object*)*129);
-  Object** objects = malloc(sizeof(Object*)*129);
-  Object** lights = malloc(sizeof(Object*)*129);
+  g_cameras = malloc(sizeof(Object*)*129);
+  g_objects = malloc(sizeof(Object*)*129);
+  g_lights = malloc(sizeof(Object*)*129);
   
   Object** json_objects = read_scene(argv[3]);
   int camcnt = 0;
@@ -113,19 +117,19 @@ int main(int argc, char *argv[]) {
   int lgtcnt = 0;
   for (int i = 0; json_objects[i] != NULL; i++) {
     if (json_objects[i]->kind == 0) {
-      cameras[camcnt] = json_objects[i];
+      g_cameras[camcnt] = json_objects[i];
       camcnt++;
     } else if (json_objects[i]->kind == 1 || json_objects[i]->kind == 2) {
-      objects[objcnt] = json_objects[i];
+      g_objects[objcnt] = json_objects[i];
       objcnt++;
     } else if (json_objects[i]->kind == 3) {
-      lights[lgtcnt] = json_objects[i];
+      g_lights[lgtcnt] = json_objects[i];
       lgtcnt++;
     }
   }
-  cameras[camcnt] = NULL;
-  objects[objcnt] = NULL;
-  lights[lgtcnt] = NULL;
+  g_cameras[camcnt] = NULL;
+  g_objects[objcnt] = NULL;
+  g_lights[lgtcnt] = NULL;
 
   // Find the camera and get the height and width  
   if (camcnt == 0) {
@@ -141,8 +145,8 @@ int main(int argc, char *argv[]) {
   double cx = 0;
   double cy = 0;
   
-  double h = cameras[0]->camera.height;
-  double w = cameras[0]->camera.width;
+  double h = g_cameras[0]->camera.height;
+  double w = g_cameras[0]->camera.width;
    
   // Initialize pixel buffer
   Pixel *buffer = malloc(sizeof(Pixel) * N * M);
@@ -167,7 +171,9 @@ int main(int argc, char *argv[]) {
         1
       };
       normalize(Rd);
-
+      
+      raycast(color, Ro, Rd, 1);
+/*
       double best_t = INFINITY;
       int best_i = 0;
       // Check intersections
@@ -329,7 +335,7 @@ int main(int argc, char *argv[]) {
           }
         }
         
-      }
+      }*/
       // Note: Going through y in reverse, so adjust index accordingly
       int p = (M - y)*N + x; // Index of buffer
       buffer[p].red = (int) (255.0 *  clamp(color[0], 0.0, 1.0));
@@ -357,8 +363,169 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-void raycast(double* Ro, double* Rd, int maxdepth) {
-  return;
+void raycast(double* color, double* Ro, double* Rd, int maxdepth) {
+  double best_t = INFINITY;
+  int best_i = 0;
+  // Check intersections
+  for (int i=0; g_objects[i] != NULL; i += 1) {
+    double t = 0;
+    // Call correct intersection function
+    switch(g_objects[i]->kind) {
+    case 0:
+      t = -1;
+      break;
+    case 1:
+      t = sphere_intersection(Ro, Rd,
+                                g_objects[i]->position,
+                                g_objects[i]->sphere.radius);
+      break;
+    case 2:
+      t = plane_intersection(Ro, Rd,
+                                g_objects[i]->position,
+                                g_objects[i]->plane.normal);
+      break;
+    default:
+      fprintf(stderr, "Error: Programmer forgot to implement an intersection.");
+      exit(1);
+    }
+    if (t > 0 && t < best_t) {
+      best_t = t;
+      best_i = i;
+    }
+  }
+  
+  if (best_t > 0 && best_t != INFINITY) {
+    for (int j=0; g_lights[j] != NULL; j++) {
+    // Shadow test
+      double Ron[3] = {0, 0, 0};
+      double Rdn[3] = {0, 0, 0};
+      Ron[0] = best_t * Rd[0] + Ro[0];
+      Ron[1] = best_t * Rd[1] + Ro[1];
+      Ron[2] = best_t * Rd[2] + Ro[2];
+      Rdn[0] = g_lights[j]->position[0] - Ron[0];
+      Rdn[1] = g_lights[j]->position[1] - Ron[1];
+      Rdn[2] = g_lights[j]->position[2] - Ron[2];
+      double lgtdist = v3_len(Rdn[0], Rdn[1], Rdn[2]);
+      normalize(Rdn);
+      int closest_i = -1;
+      double closest_t = INFINITY;
+      //closest_shadow_object = ...;
+      for (int i=0; g_objects[i] != NULL; i += 1) {
+        double t = 0;
+        if (i == best_i) continue; // Skip own object
+        // Call correct intersection function
+        switch(g_objects[i]->kind) {
+        case 0:
+          t = -1;
+          break;
+        case 1:
+          t = sphere_intersection(Ron, Rdn,
+                                    g_objects[i]->position,
+                                    g_objects[i]->sphere.radius);
+          break;
+        case 2:
+          t = plane_intersection(Ron, Rdn,
+                                    g_objects[i]->position,
+                                    g_objects[i]->plane.normal);
+          break;
+        default:
+          fprintf(stderr, "Error: Programmer forgot to implement an intersection in light test.");
+          exit(1);
+        }
+        if (t > 0 && t < lgtdist) {
+          closest_t = t;
+          closest_i = i;
+        }
+      }
+      
+      if (closest_i == -1) {
+       // N, L, R, V
+       
+        double N[3];
+        switch (g_objects[best_i]->kind) {
+          case 1: // sphere
+            N[0] = Ron[0] - g_objects[best_i]->position[0];
+            N[1] = Ron[1] - g_objects[best_i]->position[1];
+            N[2] = Ron[2] - g_objects[best_i]->position[2];
+            break;
+          case 2: // plane
+            N[0] = g_objects[best_i]->plane.normal[0];
+            N[1] = g_objects[best_i]->plane.normal[1];
+            N[2] = g_objects[best_i]->plane.normal[2];
+            break;
+          default:
+            fprintf(stderr, "Error: Programmer forgot to implement object normal %d.\n", line);
+            exit(1);
+            break;
+        }
+        
+        
+        normalize(N);
+        double* L = Rdn; // light_position - Ron;
+        normalize(L);
+                 
+        double fang;
+        double theta = g_lights[j]->light.theta;
+        if (theta == 0) { // Not a spotlight
+          fang = 1;
+        } else {
+          double nRdn[3];
+          nRdn[0] = -Rdn[0];
+          nRdn[1] = -Rdn[1];
+          nRdn[2] = -Rdn[2];
+          normalize(nRdn);
+          normalize(g_lights[j]->light.direction);
+          double cos_a = v3_dot(g_lights[j]->light.direction, nRdn);
+          if (cos_a < cos(theta*PI/180.0)) {
+            fang = 0;
+          }
+          else {
+            fang = pow(cos_a, g_lights[j]->light.angular_a0);
+          }
+        }
+        
+        
+        double a_0 = g_lights[j]->light.radial_a0;
+        double a_1 = g_lights[j]->light.radial_a0;
+        double a_2 = g_lights[j]->light.radial_a0;
+        double frad = 1/(a_0 + a_1 * lgtdist + a_2 * sqr(lgtdist));
+        
+        double NdotL = v3_dot(N, L);
+        
+        double diffuse = 0;
+        if (NdotL > 0) {
+          diffuse = NdotL;
+        }
+        
+        double V[3];
+        V[0] = -Rd[0];
+        V[1] = -Rd[1];
+        V[2] = -Rd[2];
+        normalize(V);
+        
+        double R[3]; // Reflection of L
+        R[0] = L[0] + 2*(NdotL*N[0] - L[0]);
+        R[1] = L[1] + 2*(NdotL*N[1] - L[1]);
+        R[2] = L[2] + 2*(NdotL*N[2] - L[2]);
+        normalize(R);
+        
+        double specular = 0;
+        double VdotR = v3_dot(V, R);
+        if (VdotR > 0) {
+          specular = pow(VdotR, 20);
+        }
+        
+        double* dc = g_objects[best_i]->color;
+        double* sc = g_objects[best_i]->specular_color;
+        double* lc = g_lights[j]->color;
+        
+        color[0] += frad * fang * lc[0]*(diffuse*dc[0] + specular*sc[0]);
+        color[1] += frad * fang * lc[1]*(diffuse*dc[1] + specular*sc[1]);
+        color[2] += frad * fang * lc[2]*(diffuse*dc[2] + specular*sc[2]);
+      }
+    }
+    
+  }
 }
 
 
