@@ -295,6 +295,21 @@ int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
       raycast(reflcolor, Rol, Rdl, maxdepth-1);
     }
     
+    double Rdr[3]; // Reflection of L
+    Rdr[0] = Rd[0];
+    Rdr[1] = Rd[1];
+    Rdr[2] = Rd[2];
+    normalize(Rdl);
+    
+    double Ror[3] = {0, 0, 0};
+    Ror[0] = 0.01 * Rdr[0] + Ron[0];
+    Ror[1] = 0.01 * Rdr[1] + Ron[1];
+    Ror[2] = 0.01 * Rdr[2] + Ron[2];
+    
+    if (refr != 0) {
+      raycast(refrcolor, Ror, Rdr, maxdepth-1);
+    }
+    
     for (int j=0; g_lights[j] != NULL; j++) {
     // Shadow test
 
@@ -416,7 +431,7 @@ int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
   }
 }
 
-
+int g_intflg = 0;
 double sphere_intersection(double* Ro, double* Rd,
                              double* C, double r) {
   double a = (sqr(Rd[0]) + sqr(Rd[1]) + sqr(Rd[2]));
@@ -428,12 +443,18 @@ double sphere_intersection(double* Ro, double* Rd,
 
   det = sqrt(det);
   
+  
   double t0 = (-b - det) / (2*a);
+  double t1 = (-b + det) / (2*a);
+  
+  if (t0 * t1 < 0) {
+    g_intflg = 1;
+  }
+  
   if (t0 > 0) return t0;
 
-  double t1 = (-b + det) / (2*a);
   if (t1 > 0) return t1;
-
+  
   return -1;
 }
 
