@@ -24,6 +24,9 @@ typedef struct {
   double color[3]; // diffuse color
   double specular_color[3];
   double position[3];
+  double reflectivity;
+  double refractivity;
+  double ior;
   union {
     struct {
       double width;
@@ -173,169 +176,7 @@ int main(int argc, char *argv[]) {
       normalize(Rd);
       
       raycast(color, Ro, Rd, 1);
-/*
-      double best_t = INFINITY;
-      int best_i = 0;
-      // Check intersections
-      for (int i=0; objects[i] != NULL; i += 1) {
-        double t = 0;
-        // Call correct intersection function
-        switch(objects[i]->kind) {
-        case 0:
-          t = -1;
-          break;
-        case 1:
-          t = sphere_intersection(Ro, Rd,
-                                    objects[i]->position,
-                                    objects[i]->sphere.radius);
-          break;
-        case 2:
-          t = plane_intersection(Ro, Rd,
-                                    objects[i]->position,
-                                    objects[i]->plane.normal);
-          break;
-        default:
-          fprintf(stderr, "Error: Programmer forgot to implement an intersection.");
-          exit(1);
-        }
-        if (t > 0 && t < best_t) {
-          best_t = t;
-          best_i = i;
-        }
-      }
-      
-      if (best_t > 0 && best_t != INFINITY) {
-        for (int j=0; lights[j] != NULL; j++) {
-        // Shadow test
-          double Ron[3] = {0, 0, 0};
-          double Rdn[3] = {0, 0, 0};
-          Ron[0] = best_t * Rd[0] + Ro[0];
-          Ron[1] = best_t * Rd[1] + Ro[1];
-          Ron[2] = best_t * Rd[2] + Ro[2];
-          Rdn[0] = lights[j]->position[0] - Ron[0];
-          Rdn[1] = lights[j]->position[1] - Ron[1];
-          Rdn[2] = lights[j]->position[2] - Ron[2];
-          double lgtdist = v3_len(Rdn[0], Rdn[1], Rdn[2]);
-          normalize(Rdn);
-          int closest_i = -1;
-          double closest_t = INFINITY;
-          //closest_shadow_object = ...;
-          for (int i=0; objects[i] != NULL; i += 1) {
-            double t = 0;
-            if (i == best_i) continue; // Skip own object
-            // Call correct intersection function
-            switch(objects[i]->kind) {
-            case 0:
-              t = -1;
-              break;
-            case 1:
-              t = sphere_intersection(Ron, Rdn,
-                                        objects[i]->position,
-                                        objects[i]->sphere.radius);
-              break;
-            case 2:
-              t = plane_intersection(Ron, Rdn,
-                                        objects[i]->position,
-                                        objects[i]->plane.normal);
-              break;
-            default:
-              fprintf(stderr, "Error: Programmer forgot to implement an intersection in light test.");
-              exit(1);
-            }
-            if (t > 0 && t < lgtdist) {
-              closest_t = t;
-              closest_i = i;
-            }
-          }
-          
-          if (closest_i == -1) {
-           // N, L, R, V
-           
-            double N[3];
-            switch (objects[best_i]->kind) {
-              case 1: // sphere
-                N[0] = Ron[0] - objects[best_i]->position[0];
-                N[1] = Ron[1] - objects[best_i]->position[1];
-                N[2] = Ron[2] - objects[best_i]->position[2];
-                break;
-              case 2: // plane
-                N[0] = objects[best_i]->plane.normal[0];
-                N[1] = objects[best_i]->plane.normal[1];
-                N[2] = objects[best_i]->plane.normal[2];
-                break;
-              default:
-                fprintf(stderr, "Error: Programmer forgot to implement object normal %d.\n", line);
-                exit(1);
-                break;
-            }
-            
-            
-            normalize(N);
-            double* L = Rdn; // light_position - Ron;
-            normalize(L);
-                     
-            double fang;
-            double theta = lights[j]->light.theta;
-            if (theta == 0) { // Not a spotlight
-              fang = 1;
-            } else {
-              double nRdn[3];
-              nRdn[0] = -Rdn[0];
-              nRdn[1] = -Rdn[1];
-              nRdn[2] = -Rdn[2];
-              normalize(nRdn);
-              normalize(lights[j]->light.direction);
-              double cos_a = v3_dot(lights[j]->light.direction, nRdn);
-              if (cos_a < cos(theta*PI/180.0)) {
-                fang = 0;
-              }
-              else {
-                fang = pow(cos_a, lights[j]->light.angular_a0);
-              }
-            }
-            
-            
-            double a_0 = lights[j]->light.radial_a0;
-            double a_1 = lights[j]->light.radial_a0;
-            double a_2 = lights[j]->light.radial_a0;
-            double frad = 1/(a_0 + a_1 * lgtdist + a_2 * sqr(lgtdist));
-            
-            double NdotL = v3_dot(N, L);
-            
-            double diffuse = 0;
-            if (NdotL > 0) {
-              diffuse = NdotL;
-            }
-            
-            double V[3];
-            V[0] = -Rd[0];
-            V[1] = -Rd[1];
-            V[2] = -Rd[2];
-            normalize(V);
-            
-            double R[3]; // Reflection of L
-            R[0] = L[0] + 2*(NdotL*N[0] - L[0]);
-            R[1] = L[1] + 2*(NdotL*N[1] - L[1]);
-            R[2] = L[2] + 2*(NdotL*N[2] - L[2]);
-            normalize(R);
-            
-            double specular = 0;
-            double VdotR = v3_dot(V, R);
-            if (VdotR > 0) {
-              specular = pow(VdotR, 20);
-            }
-            
-            double* dc = objects[best_i]->color;
-            double* sc = objects[best_i]->specular_color;
-            double* lc = lights[j]->color;
-            
-            color[0] += frad * fang * lc[0]*(diffuse*dc[0] + specular*sc[0]);
-            color[1] += frad * fang * lc[1]*(diffuse*dc[1] + specular*sc[1]);
-            color[2] += frad * fang * lc[2]*(diffuse*dc[2] + specular*sc[2]);
-          }
-        }
-        
-      }*/
+
       // Note: Going through y in reverse, so adjust index accordingly
       int p = (M - y)*N + x; // Index of buffer
       buffer[p].red = (int) (255.0 *  clamp(color[0], 0.0, 1.0));
@@ -754,19 +595,19 @@ Object** read_scene(char* filename) {
             }
             break;
           case 1:
-            if (valcnt < 3 || valcnt > 4) {
+            if (valcnt < 3 || valcnt > 7) {
               fprintf(stderr, "Error: Bad value count.");
               exit(1);
             }
             break;
           case 2:
-            if (valcnt < 3 || valcnt > 4) {
+            if (valcnt < 3 || valcnt > 7) {
               fprintf(stderr, "Error: Bad value count.");
               exit(1);
             }
             break;
           case 3:
-            if (valcnt < 6 || valcnt > 9) {
+            if (valcnt < 6 || valcnt > 12) {
               fprintf(stderr, "Error: Bad value count.");
               exit(1);
             }
@@ -825,6 +666,39 @@ Object** read_scene(char* filename) {
             default:
               fprintf(stderr, "Error: Unexpected key on line %d.\n", line);
               exit(1);
+              break;
+            }
+          } else if (strcmp(key, "reflectivity") == 0) {
+            double value = next_number(json);
+            switch (objects[objcnt]->kind) {
+            case 0:
+              fprintf(stderr, "Error: Unexpected key on line %d.\n", line);
+              exit(1);
+              break;
+            default:
+              objects[objcnt]->reflectivity = value;
+              break;
+            }
+          } else if (strcmp(key, "refractivity") == 0) {
+            double value = next_number(json);
+            switch (objects[objcnt]->kind) {
+            case 0:
+              fprintf(stderr, "Error: Unexpected key on line %d.\n", line);
+              exit(1);
+              break;
+            default:
+              objects[objcnt]->refractivity = value;
+              break;
+            }
+          } else if (strcmp(key, "ior") == 0) {
+            double value = next_number(json);
+            switch (objects[objcnt]->kind) {
+            case 0:
+              fprintf(stderr, "Error: Unexpected key on line %d.\n", line);
+              exit(1);
+              break;
+            default:
+              objects[objcnt]->ior = value;
               break;
             }
           } else if (strcmp(key, "diffuse_color") == 0 || strcmp(key, "color") == 0) {
