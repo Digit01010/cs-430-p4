@@ -295,8 +295,6 @@ int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
       raycast(reflcolor, Rol, Rdl, maxdepth-1);
     }
     
-    //printf("%f, %f, %f \n", reflcolor[0], reflcolor[1], reflcolor[2]);
-    
     for (int j=0; g_lights[j] != NULL; j++) {
     // Shadow test
 
@@ -339,8 +337,6 @@ int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
       }
       
       if (closest_i == -1) {
-       // N, L, R, V
-        
         
         normalize(N);
         double* L = Rdn; // light_position - Ron;
