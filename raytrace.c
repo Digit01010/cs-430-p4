@@ -53,6 +53,7 @@ Object** g_cameras;
 Object** g_objects;
 Object** g_lights;
 int line = 1;
+int g_intflg = 0;
 
 int raycast(double*, double*, double*, int); 
 double sphere_intersection(double*, double*, double*, double);
@@ -76,6 +77,12 @@ static inline double v3_len(double x, double y, double z) {
 
 static inline double v3_dot(double* a, double* b) {
   return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+}
+
+static inline void v3_cross(double* a, double* b, double* c) {
+  c[0] = a[1]*b[2] - a[2]*b[1];
+  c[1] = a[2]*b[0] - a[0]*b[2];
+  c[2] = a[0]*b[1] - a[1]*b[0];
 }
 
 static inline double clamp(double n, double min, double max) {
@@ -275,11 +282,15 @@ int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
         exit(1);
         break;
     }
+    normalize(N);
     
     refl = g_objects[best_i]->reflectivity;
     refr = g_objects[best_i]->refractivity;
     ior = g_objects[best_i]->ior;
     
+    
+    
+    // Reflection
     double NdotRd = v3_dot(N, Rd);
     
     double Rdl[3]; // Reflection of L
@@ -297,18 +308,36 @@ int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
       raycast(reflcolor, Rol, Rdl, maxdepth-1);
     }
     
-    double Rdr[3]; // Reflection of L
-    Rdr[0] = Rd[0];
-    Rdr[1] = Rd[1];
-    Rdr[2] = Rd[2];
-    normalize(Rdl);
-    
-    double Ror[3] = {0, 0, 0};
-    Ror[0] = 0.01 * Rdr[0] + Ron[0];
-    Ror[1] = 0.01 * Rdr[1] + Ron[1];
-    Ror[2] = 0.01 * Rdr[2] + Ron[2];
-    
+    // Refraction
     if (refr != 0) {
+      double a[3] = {0, 0, 0};
+      v3_cross(N, Rd, a);
+      normalize(a);
+      
+      double b[3] = {0, 0, 0};
+      v3_cross(a, N, b);
+      
+      normalize(Rd);
+      double sinphi;
+      if (g_intflg == 0) {
+        sinphi = (1/ior) * v3_dot(Rd, b); 
+      } else {
+        g_intflg = 0;
+        sinphi = ior * v3_dot(Rd, b);
+      }
+      double cosphi = sqrt(1 - sqr(sinphi));
+      
+      double Rdr[3];
+      Rdr[0] = -N[0]*cosphi + b[0]*sinphi;
+      Rdr[1] = -N[1]*cosphi + b[1]*sinphi;
+      Rdr[2] = -N[2]*cosphi + b[2]*sinphi;
+      normalize(Rdr);
+      
+      double Ror[3] = {0, 0, 0};
+      Ror[0] = 0.01 * Rdr[0] + Ron[0];
+      Ror[1] = 0.01 * Rdr[1] + Ron[1];
+      Ror[2] = 0.01 * Rdr[2] + Ron[2];
+    
       raycast(refrcolor, Ror, Rdr, maxdepth-1);
     }
     
@@ -433,7 +462,6 @@ int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
   }
 }
 
-int g_intflg = 0;
 double sphere_intersection(double* Ro, double* Rd,
                              double* C, double r) {
   double a = (sqr(Rd[0]) + sqr(Rd[1]) + sqr(Rd[2]));
