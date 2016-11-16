@@ -54,7 +54,7 @@ Object** g_objects;
 Object** g_lights;
 int line = 1;
 
-void raycast(double*, double*, double*, int); 
+int raycast(double*, double*, double*, int); 
 double sphere_intersection(double*, double*, double*, double);
 double plane_intersection(double*, double*, double*, double*);
 void writeP3(Pixel *, Header, FILE *);
@@ -204,7 +204,12 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-void raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
+int raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
+  if (maxdepth == 0) {
+    return 1;
+  }
+
+  int ret;
   double best_t = INFINITY;
   int best_i = -1;
   // Check intersections
@@ -241,8 +246,10 @@ void raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
 
   double refl = 0;
   double refr = 0;
+  double ior = 0;
   
   if (best_t > 0 && best_t != INFINITY) {
+    ret = 0;
     
     double Ron[3] = {0, 0, 0};
     Ron[0] = best_t * Rd[0] + Ro[0];
@@ -269,18 +276,26 @@ void raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
     
     refl = g_objects[best_i]->reflectivity;
     refr = g_objects[best_i]->refractivity;
+    ior = g_objects[best_i]->ior;
     
     double NdotRd = v3_dot(N, Rd);
     
     double Rdl[3]; // Reflection of L
-    Rdl[0] = Rd[0] + 2*(NdotRd*N[0] - Rd[0]);
-    Rdl[1] = Rd[1] + 2*(NdotRd*N[1] - Rd[1]);
-    Rdl[2] = Rd[2] + 2*(NdotRd*N[2] - Rd[2]);
+    Rdl[0] = Rd[0] - 2*(NdotRd*N[0]);// + Rd[0]);
+    Rdl[1] = Rd[1] - 2*(NdotRd*N[1]);// + Rd[1]);
+    Rdl[2] = Rd[2] - 2*(NdotRd*N[2]);// + Rd[2]);
     normalize(Rdl);
     
+    double Rol[3] = {0, 0, 0};
+    Rol[0] = 0.01 * Rdl[0] + Ron[0];
+    Rol[1] = 0.01 * Rdl[1] + Ron[1];
+    Rol[2] = 0.01 * Rdl[2] + Ron[2];
+    
     if (refl != 0) {
-      printf("Got here!");
+      raycast(reflcolor, Rol, Rdl, maxdepth-1);
     }
+    
+    //printf("%f, %f, %f \n", reflcolor[0], reflcolor[1], reflcolor[2]);
     
     for (int j=0; g_lights[j] != NULL; j++) {
     // Shadow test
@@ -353,8 +368,8 @@ void raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
         
         
         double a_0 = g_lights[j]->light.radial_a0;
-        double a_1 = g_lights[j]->light.radial_a0;
-        double a_2 = g_lights[j]->light.radial_a0;
+        double a_1 = g_lights[j]->light.radial_a1;
+        double a_2 = g_lights[j]->light.radial_a2;
         double frad = 1/(a_0 + a_1 * lgtdist + a_2 * sqr(lgtdist));
         
         double NdotL = v3_dot(N, L);
@@ -395,6 +410,12 @@ void raycast(double* outcolor, double* Ro, double* Rd, int maxdepth) {
     outcolor[0] += (1 - refl - refr)*objcolor[0] + refl*reflcolor[0] + refr*refrcolor[0];
     outcolor[1] += (1 - refl - refr)*objcolor[1] + refl*reflcolor[1] + refr*refrcolor[1];
     outcolor[2] += (1 - refl - refr)*objcolor[2] + refl*reflcolor[2] + refr*refrcolor[2];
+    return ret;
+    //if (refl != 0) {
+    //  outcolor[0] = reflcolor[0];
+    //  outcolor[1] = reflcolor[1];
+    //  outcolor[2] = reflcolor[2];
+    //}
     
   }
 }
