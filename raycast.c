@@ -154,6 +154,11 @@ int main(int argc, char *argv[]) {
     for (int x = 0; x < N; x += 1) {
       // Raycast
       
+      double* color = malloc(sizeof(double)*3);
+      color[0] = 0; // ambient_color[0];
+      color[1] = 0; // ambient_color[1];
+      color[2] = 0; // ambient_color[2];
+      
       double Ro[3] = {0, 0, 0};
       // Rd = normalize(P - Ro)
       double Rd[3] = {
@@ -192,11 +197,6 @@ int main(int argc, char *argv[]) {
           best_i = i;
         }
       }
-      
-      double* color = malloc(sizeof(double)*3);
-      color[0] = 0; // ambient_color[0];
-      color[1] = 0; // ambient_color[1];
-      color[2] = 0; // ambient_color[2];
       
       if (best_t > 0 && best_t != INFINITY) {
         for (int j=0; lights[j] != NULL; j++) {
@@ -356,6 +356,11 @@ int main(int argc, char *argv[]) {
   
   return 0;
 }
+
+void raycast(double* Ro, double* Rd, int maxdepth) {
+  return;
+}
+
 
 double sphere_intersection(double* Ro, double* Rd,
                              double* C, double r) {
